@@ -49,6 +49,9 @@ function Key({ note, index, playNote, noteRange, stopNote, isPlaying, ...props }
       onMouseEnter={() => isMouseDown && playNote(noteInfo.midi)}
       onMouseLeave={() => stopNote(noteInfo.midi)}
       onMouseUp={() => stopNote(noteInfo.midi)}
+      onTouchStart={() => playNote(noteInfo.midi)}
+      onTouchCancel={() => stopNote(noteInfo.midi)}
+      onTouchEnd={() => stopNote(noteInfo.midi)}
     >
       <div
         className={'web-piano-key-content'}
