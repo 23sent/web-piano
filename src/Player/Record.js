@@ -25,6 +25,10 @@ export default class Recorder {
     return this.context.currentTime - this.startContextTime;
   }
 
+  getRecorderTimeFormContextTime(contextTime) {
+    return contextTime - this.startContextTime;
+  }
+
   start() {
     console.log('Start Recording');
     this.startContextTime = this.context.currentTime;

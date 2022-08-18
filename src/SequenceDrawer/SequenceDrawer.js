@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Range, Note } from '@tonaljs/tonal';
 import Scheduler from '../Player/Scheduler';
+import { getNoteColor } from '../helpers';
+
+const FRAME_PER_SECONDS = 24;
+const SHOW_GUIDLINES = false;
 
 let timer = null;
+let lastRenderTime = 0;
+
 function SequenceDrawer({ player, firstNote = 'C4', lastNote = 'B6', isRecording, isPlaying }) {
   const canvasRef = useRef();
 
@@ -13,6 +19,8 @@ function SequenceDrawer({ player, firstNote = 'C4', lastNote = 'B6', isRecording
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    lastRenderTime = 0;
+
     if (canvas) {
       const context = canvas.getContext('2d');
       context.canvas.width = canvas.offsetWidth * 2;
@@ -22,86 +30,119 @@ function SequenceDrawer({ player, firstNote = 'C4', lastNote = 'B6', isRecording
 
   useEffect(() => {
     draw();
-  }, [noteRange, isRecording, isPlaying]);
+  }, [noteRange]);
+
+  useEffect(() => {
+    if (isRecording || isPlaying) {
+      draw();
+    } else {
+      window.cancelAnimationFrame(timer);
+    }
+  }, [isRecording, isPlaying]);
 
   function draw() {
-    const canvas = canvasRef.current;
+    const timestamp = performance.now();
+    if (timestamp - lastRenderTime > 1000 / FRAME_PER_SECONDS) {
+      lastRenderTime = timestamp;
 
-    if (canvas.getContext) {
-      const context = canvas.getContext('2d');
-      const height = context.canvas.height;
-      const width = context.canvas.width;
-      context.clearRect(0, 0, width, height);
+      const canvas = canvasRef.current;
 
-      const notePositions = {};
-      const noteWidth = width / noteRange.length;
-      for (let i = 0; i < noteRange.length; i++) {
-        const note = noteRange[i];
-        notePositions[note] = {
-          left: noteWidth * i,
-          right: noteWidth * (i + 1),
-        };
-        context.save();
-        context.beginPath();
-        context.moveTo(notePositions[note].left, 0);
-        context.lineTo(notePositions[note].left, height);
-        context.stroke();
-        context.closePath();
-        context.restore();
-      }
+      if (canvas.getContext) {
+        const context = canvas.getContext('2d');
+        const height = context.canvas.height;
+        const width = context.canvas.width;
+        context.clearRect(0, 0, width, height);
 
-      const recorder = player?._recorder;
-      const scheduler = player?._scheduler;
-      if (recorder && scheduler?.state !== Scheduler.STATES.STARTED) {
-        const records = recorder.records;
-        const recorderTime = recorder.currentRecordTime;
-
-        context.save();
-        const maxBottomPosition = recorderTime * 100;
-
-        context.translate(0, -(maxBottomPosition - height));
-
-        for (let record of records) {
-          const { note: midiNumber, time, duration } = record;
-          const note = Note.fromMidiSharps(midiNumber, { sharps: true });
-          context.fillStyle = 'blue';
-          context.fillRect(notePositions[note].left, time * 100, noteWidth, duration * 100);
+        const notePositions = {};
+        const noteWidth = width / noteRange.length;
+        for (let i = 0; i < noteRange.length; i++) {
+          const note = noteRange[i];
+          const midi = Note.midi(note);
+          notePositions[midi] = {
+            left: noteWidth * i,
+            right: noteWidth * (i + 1),
+          };
+          if (SHOW_GUIDLINES) {
+            context.save();
+            context.beginPath();
+            context.moveTo(notePositions[midi].left, 0);
+            context.lineTo(notePositions[midi].left, height);
+            context.stroke();
+            context.closePath();
+            context.restore();
+          }
         }
 
-        context.translate(0, maxBottomPosition - height);
+        const recorder = player?._recorder;
+        const scheduler = player?._scheduler;
+        const playingNotes = player.playingNotes;
+        if (recorder && scheduler?.state !== Scheduler.STATES.STARTED) {
+          const records = recorder.records;
+          const recorderTime = recorder.currentRecordTime;
 
-        context.restore();
-      }
+          context.save();
+          const maxBottomPosition = recorderTime * 100;
 
-      if (recorder && scheduler?.state === Scheduler.STATES.STARTED) {
-        const records = recorder.records;
-        const schedulerTime = scheduler.prevTime;
+          context.translate(0, -(maxBottomPosition - height));
 
-        context.save();
-        context.transform(1, 0, 0, -1, 0, canvas.height);
+          for (let record of records) {
+            const { note: midiNumber, time, duration } = record;
+            context.fillStyle = getNoteColor(midiNumber);
+            context.fillRect(notePositions[midiNumber].left, time * 100, noteWidth, duration * 100);
+          }
 
-        const maxBottomPosition = schedulerTime * 100;
+          for (let midiNumber in playingNotes) {
+            const playingNote = playingNotes[midiNumber];
+            if (playingNote) {
+              const { audioNode, startTime, duration } = playingNote;
+              const time = recorder.getRecorderTimeFormContextTime(startTime);
 
-        context.translate(0, -maxBottomPosition);
-        for (let record of records) {
-          const { note: midiNumber, time, duration } = record;
-          const note = Note.fromMidiSharps(midiNumber, { sharps: true });
-          context.fillStyle = 'blue';
-          context.fillRect(notePositions[note].left, time * 100, noteWidth, duration * 100);
+              context.fillStyle = getNoteColor(midiNumber);
+              context.fillRect(
+                notePositions[midiNumber].left,
+                time * 100,
+                noteWidth,
+                duration * 100,
+              );
+            }
+          }
+
+          context.translate(0, maxBottomPosition - height);
+
+          context.restore();
         }
 
-        context.translate(0, maxBottomPosition);
+        if (recorder && scheduler?.state === Scheduler.STATES.STARTED) {
+          const records = recorder.records;
+          const schedulerTime = scheduler.prevTime;
 
-        context.restore();
+          context.save();
+          // context.transform(1, 0, 0, -1, 0, canvas.height);
+
+          const maxBottomPosition = schedulerTime * 100;
+
+          context.translate(0, -(maxBottomPosition - height));
+          // context.translate(0, -maxBottomPosition);
+
+          for (let record of records) {
+            const { note: midiNumber, time, duration } = record;
+            context.fillStyle = getNoteColor(midiNumber);
+            context.fillRect(notePositions[midiNumber].left, time * 100, noteWidth, duration * 100);
+          }
+          context.translate(0, maxBottomPosition - height);
+
+          // context.translate(0, maxBottomPosition);
+
+          context.restore();
+        }
       }
     }
-
     if (isRecording) {
       timer = window.requestAnimationFrame(() => draw());
     } else if (isPlaying) {
       timer = window.requestAnimationFrame(() => draw());
     } else {
-      cancelAnimationFrame(timer);
+      window.cancelAnimationFrame(timer);
     }
   }
 

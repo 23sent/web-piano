@@ -1,22 +1,7 @@
 import { Note } from '@tonaljs/tonal';
 import { useMemo } from 'react';
 import { isMouseDown } from './Piano';
-
-function getRandomColor() {
-  const colors = [
-    '#fd7f6f',
-    '#7eb0d5',
-    '#b2e061',
-    '#bd7ebe',
-    '#ffb55a',
-    '#ffee65',
-    '#beb9db',
-    '#fdcce5',
-    '#8bd3c7',
-  ];
-  const index = Math.floor(Math.random() * colors.length);
-  return colors[index];
-}
+import { getNoteColor } from '../helpers';
 
 function Key({ note, index, playNote, noteRange, stopNote, isPlaying, ...props }) {
   const noteInfo = useMemo(() => {
@@ -41,10 +26,13 @@ function Key({ note, index, playNote, noteRange, stopNote, isPlaying, ...props }
   }
 
   function getKeyStyle() {
-    const wholeTonesCount = getWholeTonesCount();
-    const wholeToneWidth = 100 / wholeTonesCount;
-    const width = wholeToneWidth / (noteInfo.acc ? 1.3 : 1);
-    const left = getRelativeStep() * wholeToneWidth + (wholeToneWidth - width / 2) * noteInfo.alt;
+    let width = 100 / noteRange.length;
+    let left = index * width;
+    if (!noteInfo.acc) {
+      const wholeTonesCount = getWholeTonesCount();
+      width = 100 / wholeTonesCount;
+      left = getRelativeStep() * width;
+    }
     const bottom = noteInfo.acc ? 35 : 0;
     return { left: `${left}%`, width: `${width}%`, bottom: `${bottom}%` };
   }
@@ -63,12 +51,12 @@ function Key({ note, index, playNote, noteRange, stopNote, isPlaying, ...props }
       onMouseUp={() => stopNote(noteInfo.midi)}
     >
       <div
-        className="web-piano-key-content"
-        style={{ backgroundColor: `${isPlaying ? getRandomColor() : ''}` }}
+        className={'web-piano-key-content'}
+        style={{ backgroundColor: `${isPlaying ? getNoteColor(noteInfo.midi) : ''}` }}
       >
-        {
-          // `${noteInfo.letter}${noteInfo.acc}`
-        }
+        <span
+          className={`${note === 'C4' ? 'key-c4' : ''} `}
+        >{`${noteInfo.letter}${noteInfo.acc}`}</span>
       </div>
     </div>
   );
